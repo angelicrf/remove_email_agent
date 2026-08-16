@@ -1,36 +1,67 @@
-# Gmail Cleanup App
+# Gmail Agent Desktop App
 
-Deletes unread Gmail messages and empties Trash using Google Desktop OAuth only.
+A desktop application with an AI-powered agent to manage your Gmail account. Perform tasks like cleaning your inbox, summarizing recent emails, or sending messages using natural language commands.
 
 ## Setup
 
-1. **Create a Google Cloud OAuth client**
-   - Go to Google Cloud Console → APIs & Services → Enable "Gmail API".
-   - Create OAuth client credentials of type "Desktop app".
-   - Download the JSON file, save it as `credentials.json` in this folder.
-   - No redirect URL is required for a Desktop app; Google uses a local localhost callback automatically.
+Follow these steps to get the application running.
 
-2. **Install dependencies**
+### 1. Google Cloud OAuth Credentials
 
-   ```
-   pip install -r requirements.txt
-   ```
+The application needs permission to access your Gmail account.
 
-3. **Run the desktop app**
+- Go to the Google Cloud Console.
+- Create a new project or select an existing one.
+- Go to **APIs & Services → Library** and enable the **Gmail API**.
+- Go to **APIs & Services → Credentials**.
+- Click **Create Credentials → OAuth client ID**.
+- Select **Desktop app** as the application type.
+- Download the JSON file and save it as `credentials.json` in the project's root directory.
 
-   ```
-   python desktop_app.py
-   ```
+### 2. OpenAI API Key
 
-   The first run opens a browser to complete Gmail OAuth consent in the desktop flow; a `token.json` is cached locally afterward.
+The AI agent uses OpenAI's models to understand your commands.
 
-4. **Run the terminal cleanup script**
-   ```
-   python main.py
-   ```
-   This version connects to Gmail and immediately deletes unread mail, then empties Trash.
+- Create an API key in your OpenAI Dashboard.
+- In the project's root directory, create a file named `.env`.
+- Add your API key to the `.env` file like this:
+  ```
+  OPENAI_API_KEY="your_key_here"
+  ```
+
+### 3. Install Dependencies
+
+```
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Desktop App (with AI Agent)
+
+This is the main interface for interacting with your Gmail.
+
+```
+python desktop_app.py
+```
+
+1.  **Connect to Gmail**: Click the "Connect Gmail" button. This will open a browser window for you to grant the application permission. A `token.json` file will be created to keep you logged in.
+2.  **Manual Cleanup**: Use the "Clean unread" and "Empty trash" buttons for quick, predefined actions.
+3.  **AI Agent**: Type a command into the text box and click "Run Agent".
+    - `"Summarize my last 5 emails"`
+    - `"Send an email to john.doe@example.com with the subject 'Meeting' and body 'Are we still on for tomorrow?'"`
+    - `"Clean up my unread mail"`
+
+### Terminal Cleanup Script
+
+For a quick, non-interactive cleanup that trashes unread/spam emails and empties the trash.
+
+```
+python main.py
+```
 
 ## Notes
 
-- Uses the full `https://mail.google.com/` scope because permanently deleting Trash requires it. `credentials.json` and `token.json` are gitignored — keep them private.
-- Trashing is a soft delete (recoverable for 30 days); `empty_trash()` permanently deletes messages already in Trash and cannot be undone.
+- **Privacy**: The `credentials.json`, `token.json`, and `.env` files contain sensitive information. They are included in `.gitignore` and should never be shared or committed to version control.
+- **Permissions**: The app requests broad permissions (`gmail.modify`, `gmail.send`) to perform its tasks. Review the scopes during the OAuth consent process.
+- **Deletion**: Trashing messages is a soft delete (recoverable from the Trash folder for 30 days). Emptying the trash is a permanent action and cannot be undone.
