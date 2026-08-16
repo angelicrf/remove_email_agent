@@ -1,5 +1,7 @@
 """Gmail API wrapper: OAuth login, unread search, trash, and empty-trash operations."""
+import base64
 import os
+from email.mime.text import MIMEText
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -7,8 +9,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Full mail scope is required to permanently delete messages from Trash.
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.readonly", "https://mail.google.com/"]
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",  # Read, compose, send, and permanently delete
+    "https://www.googleapis.com/auth/gmail.readonly",  # Read-only access
+    "https://www.googleapis.com/auth/gmail.send",  # Send messages
+]
 
 # Build paths relative to this script's directory for robustness.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -75,6 +80,73 @@ def search_spam(service, max_results=500):
         message_ids.extend(m["id"] for m in response.get("messages", []))
         request = service.users().messages().list_next(request, response)
     return message_ids[:max_results]
+
+
+def list_recent_messages(service, max_results=10):
+    """Return the most recent inbox message IDs in reverse chronological order."""
+    response = service.users().messages().list(
+        userId="me",
+        labelIds=["INBOX"],
+        maxResults=max_results,
+    ).execute()
+    return [msg["id"] for msg in response.get("messages", [])[:max_results]]
+
+
+def _decode_base64_url(data):
+    if not data:
+        return ""
+    padded = data + "=" * ((4 - len(data) % 4) % 4)
+    return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8", errors="replace")
+
+
+def _extract_message_body(payload):
+    if not payload:
+        return ""
+
+    if payload.get("body", {}).get("data"):
+        return _decode_base64_url(payload["body"]["data"])
+
+    for part in payload.get("parts", []):
+        if part.get("mimeType") in {"text/plain", "text/html"}:
+            body_data = part.get("body", {}).get("data")
+            if body_data:
+                return _decode_base64_url(body_data)
+        nested_body = _extract_message_body(part)
+        if nested_body:
+            return nested_body
+
+    return ""
+
+
+def get_message_content(service, message_id):
+    """Return a lightweight summary of one message including sender, subject, and text."""
+    message = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+    payload = message.get("payload", {})
+    headers = {header["name"].lower(): header["value"] for header in payload.get("headers", [])}
+    return {
+        "id": message_id,
+        "from": headers.get("from"),
+        "subject": headers.get("subject"),
+        "snippet": message.get("snippet", ""),
+        "body": _extract_message_body(payload)[:20000],
+    }
+
+
+def send_message(service, to, subject, body):
+    """Create and send an email message."""
+    try:
+        message = MIMEText(body)
+        message["to"] = to
+        message["subject"] = subject
+        message["from"] = "me"
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+        create_message = {"raw": raw_message}
+        sent_message = service.users().messages().send(userId="me", body=create_message).execute()
+        return {"status": "success", "message_id": sent_message["id"]}
+    except HttpError as error:
+        return {"status": "error", "error": str(error)}
+
 
 def list_message_ids(service, q=None, label_ids=None, max_results=None):
     """Return all message IDs matching the query, optionally limited to max_results."""
