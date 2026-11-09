@@ -4,3 +4,6 @@ token.json
 __pycache__/
 *.pyc
 .venv/
+
+build/
+dist/

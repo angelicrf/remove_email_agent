@@ -5,14 +5,15 @@ from tkinter import messagebox, ttk
 
 import agent
 import gmail_client
+import gmx_client
 
 
 class GmailCleanupApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Gmail Cleanup Agent")
-        self.root.geometry("520x300")
-        self.root.minsize(480, 260)
+        self.root.geometry("540x380")
+        self.root.minsize(500, 340)
 
         self.service = None
 
@@ -31,6 +32,16 @@ class GmailCleanupApp:
         ttk.Button(button_row, text="Connect Gmail", command=self.connect_gmail).pack(side="left", padx=(0, 8))
         ttk.Button(button_row, text="Clean unread", command=self.clean_unread).pack(side="left", padx=(0, 8))
         ttk.Button(button_row, text="Empty trash", command=self.empty_trash).pack(side="left")
+
+        ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=8)
+
+        ttk.Label(frame, text="GMX Mail cleanup", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        gmx_button_row = ttk.Frame(frame)
+        gmx_button_row.pack(fill="x", pady=(4, 8))
+
+        ttk.Button(gmx_button_row, text="Clean GMX unread", command=self.clean_gmx_unread).pack(side="left", padx=(0, 8))
+        ttk.Button(gmx_button_row, text="Clean GMX spam", command=self.clean_gmx_spam).pack(side="left", padx=(0, 8))
+        ttk.Button(gmx_button_row, text="Empty GMX trash", command=self.empty_gmx_trash).pack(side="left")
 
         ttk.Separator(frame, orient="horizontal").pack(fill="x", pady=10)
 
@@ -98,6 +109,52 @@ class GmailCleanupApp:
                 messagebox.showerror("Trash cleanup failed", str(exc))
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _run_gmx(self, title, busy_text, func):
+        """Run a GMX operation in a thread; report on the Tk main thread and terminal."""
+        def finish(ok, message):
+            self.status_var.set(message if ok else f"{title} failed")
+            self.result_var.set(message)
+            if ok:
+                messagebox.showinfo(title, message, parent=self.root)
+            else:
+                messagebox.showerror(f"{title} failed", message, parent=self.root)
+
+        def task():
+            try:
+                print(f"[GMX] {busy_text}", flush=True)
+                result = func()
+                message = result.get("status") or f"{title} done."
+                print(f"[GMX] {message}", flush=True)
+                self.root.after(0, finish, True, f"GMX: {message}")
+            except Exception as exc:  # pragma: no cover - UI feedback path
+                print(f"[GMX] {title} failed: {exc}", flush=True)
+                self.root.after(0, finish, False, str(exc))
+
+        self.status_var.set(busy_text)
+        self.result_var.set("")
+        threading.Thread(target=task, daemon=True).start()
+
+    def clean_gmx_unread(self):
+        self._run_gmx(
+            "GMX unread cleanup",
+            "Connecting to GMX and cleaning unread emails...",
+            gmx_client.trash_unread_messages,
+        )
+
+    def clean_gmx_spam(self):
+        self._run_gmx(
+            "GMX spam cleanup",
+            "Connecting to GMX and cleaning spam emails...",
+            gmx_client.trash_spam_messages,
+        )
+
+    def empty_gmx_trash(self):
+        self._run_gmx(
+            "GMX trash cleanup",
+            "Connecting to GMX and emptying Trash...",
+            gmx_client.empty_trash,
+        )
 
     def run_agent(self):
         if self.service is None:

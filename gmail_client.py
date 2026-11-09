@@ -3,6 +3,7 @@ import base64
 import os
 from email.mime.text import MIMEText
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -10,6 +11,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 SCOPES = [
+    "https://mail.google.com/",  # Required for permanent deletion (messages.delete / batchDelete)
     "https://www.googleapis.com/auth/gmail.modify",  # Read, compose, send, and permanently delete
     "https://www.googleapis.com/auth/gmail.readonly",  # Read-only access
     "https://www.googleapis.com/auth/gmail.send",  # Send messages
@@ -40,8 +42,14 @@ def get_gmail_service():
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                if os.path.exists(TOKEN_FILE):
+                    os.remove(TOKEN_FILE)
+                creds = None
+
+        if not creds or not creds.valid:
             if not os.path.exists(CREDENTIALS_FILE):
                 raise FileNotFoundError(
                     f"Missing '{CREDENTIALS_FILE}'. Download OAuth client credentials "

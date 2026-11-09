@@ -3,12 +3,32 @@ import json
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-from openai import OpenAI
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - runtime fallback for packaged apps
+    def load_dotenv(dotenv_path=None, *args, **kwargs):
+        """Lightweight fallback for environments where python-dotenv is not installed."""
+        path = Path(dotenv_path) if dotenv_path else PROJECT_ROOT / ".env"
+        if not path.exists():
+            return False
+
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+        return True
+
+try:
+    from openai import OpenAI
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for AI features
+    OpenAI = None
 
 import gmail_client
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 MODEL = "gpt-4o-mini"
@@ -140,6 +160,12 @@ def _dispatch(service, name, args):
 
 def run_agent(instruction: str):
     """Run one agent turn: send the instruction to OpenAI, execute any tool calls it requests."""
+    if OpenAI is None:
+        raise RuntimeError(
+            "The OpenAI package is not installed. Reinstall dependencies with:\n"
+            "pip install -r requirements.txt"
+        )
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
